@@ -1,96 +1,19 @@
-from typing import List, Dict, Tuple, Optional
-from dataclasses import dataclass
 import csv
 
 
-@dataclass
-class Song:
-    """Represents a song and its attributes."""
-    id: int
-    title: str
-    artist: str
-    genre: str
-    mood: str
-    energy: float
-    tempo_bpm: float
-    valence: float
-    danceability: float
-    acousticness: float
-
-
-@dataclass
-class UserProfile:
-    """Represents a user's taste preferences."""
-    favorite_genre: str
-    favorite_mood: str
-    target_energy: float
-    likes_acoustic: bool
-
-
-def _score_song_object(user: UserProfile, song: Song) -> Tuple[float, str]:
-    """Compute a score and explanation for a song."""
-    score = 0.0
-    reasons = []
-
-    if song.genre.lower() == user.favorite_genre.lower():
-        score += 2.0
-        reasons.append("genre match (+2.0)")
-
-    # Phase 4 experiment: mood match temporarily removed
-    # if song.mood.lower() == user.favorite_mood.lower():
-    #     score += 1.0
-    #     reasons.append("mood match (+1.0)")
-
-    energy_score = 1 - abs(song.energy - user.target_energy)
-    score += energy_score
-    reasons.append(f"energy similarity (+{energy_score:.2f})")
-
-    if user.likes_acoustic:
-        acoustic_score = song.acousticness
-        score += acoustic_score
-        reasons.append(f"acoustic bonus (+{acoustic_score:.2f})")
-    else:
-        non_acoustic_score = 1 - song.acousticness
-        score += non_acoustic_score
-        reasons.append(f"non-acoustic bonus (+{non_acoustic_score:.2f})")
-
-    explanation = ", ".join(reasons)
-    return score, explanation
-
-
-class Recommender:
-    """Handles ranking and explaining song recommendations."""
-    def __init__(self, songs: List[Song]):
-        self.songs = songs
-
-    def recommend(self, user: UserProfile, k: int = 5) -> List[Song]:
-        """Return the top k recommended songs for a user."""
-        ranked = sorted(
-            self.songs,
-            key=lambda song: _score_song_object(user, song)[0],
-            reverse=True
-        )
-        return ranked[:k]
-
-    def explain_recommendation(self, user: UserProfile, song: Song) -> str:
-        """Return a short explanation for why a song was recommended."""
-        _, explanation = _score_song_object(user, song)
-        return explanation
-
-
-def load_songs(csv_path: str) -> List[Dict]:
-    """Load songs from a CSV file into a list of dictionaries."""
+def load_songs(csv_path="data/songs.csv"):
     songs = []
 
-    with open(csv_path, newline="", encoding="utf-8") as file:
+    with open(csv_path, "r", encoding="utf-8") as file:
         reader = csv.DictReader(file)
+
         for row in reader:
             song = {
-                "id": int(row["id"]),
+                "id": row["id"],
                 "title": row["title"],
                 "artist": row["artist"],
-                "genre": row["genre"],
-                "mood": row["mood"],
+                "genre": row["genre"].lower(),
+                "mood": row["mood"].lower(),
                 "energy": float(row["energy"]),
                 "tempo_bpm": float(row["tempo_bpm"]),
                 "valence": float(row["valence"]),
@@ -102,38 +25,85 @@ def load_songs(csv_path: str) -> List[Dict]:
     return songs
 
 
-def recommend_songs(user_prefs: Dict, songs: List[Dict], k: int = 5) -> List[Tuple[Dict, float, str]]:
-    """Score songs and return the top k recommendations."""
-    ranked_songs = []
+def closeness_score(song_value, preferred_value):
+    return max(0, 1 - abs(song_value - preferred_value))
 
-    for song in songs:
-        score = 0.0
-        reasons = []
 
-        if song["genre"].lower() == user_prefs["favorite_genre"].lower():
-            score += 2.0
-            reasons.append("genre match (+2.0)")
+def tempo_score(song_tempo, preferred_tempo=100):
+    difference = abs(song_tempo - preferred_tempo)
+    return max(0, 1 - difference / 100)
 
-        # Phase 4 experiment: mood match temporarily removed
-        # if song["mood"].lower() == user_prefs["favorite_mood"].lower():
-        #     score += 1.0
-        #     reasons.append("mood match (+1.0)")
 
-        energy_score = 1 - abs(song["energy"] - user_prefs["target_energy"])
-        score += energy_score
-        reasons.append(f"energy similarity (+{energy_score:.2f})")
+def score_song(song, profile):
+    score = 0
+    reasons = []
 
-        if user_prefs["likes_acoustic"]:
-            acoustic_score = song["acousticness"]
-            score += acoustic_score
-            reasons.append(f"acoustic bonus (+{acoustic_score:.2f})")
-        else:
-            non_acoustic_score = 1 - song["acousticness"]
-            score += non_acoustic_score
-            reasons.append(f"non-acoustic bonus (+{non_acoustic_score:.2f})")
+    if song["genre"] == profile["preferred_genre"]:
+        score += 2.0
+        reasons.append(f"matches your preferred genre: {profile['preferred_genre']}")
 
-        explanation = ", ".join(reasons)
-        ranked_songs.append((song, score, explanation))
+    if song["mood"] == profile["preferred_mood"]:
+        score += 1.5
+        reasons.append(f"matches your mood: {profile['preferred_mood']}")
 
-    ranked_songs = sorted(ranked_songs, key=lambda item: item[1], reverse=True)
-    return ranked_songs[:k]
+    energy_match = closeness_score(song["energy"], profile["preferred_energy"])
+    valence_match = closeness_score(song["valence"], profile["preferred_valence"])
+    dance_match = closeness_score(song["danceability"], profile["preferred_danceability"])
+    acoustic_match = closeness_score(song["acousticness"], profile["preferred_acousticness"])
+
+    score += energy_match
+    score += valence_match
+    score += dance_match
+    score += acoustic_match
+
+    if energy_match >= 0.75:
+        reasons.append("has a similar energy level")
+
+    if valence_match >= 0.75:
+        reasons.append("has a similar emotional tone")
+
+    if dance_match >= 0.75:
+        reasons.append("fits your activity vibe")
+
+    if acoustic_match >= 0.75:
+        reasons.append("has a similar acoustic feel")
+
+    confidence = min(round((score / 7.5) * 100, 1), 100)
+
+    if confidence >= 75:
+        reliability_label = "Strong match"
+    elif confidence >= 50:
+        reliability_label = "Moderate match"
+    else:
+        reliability_label = "Weak match"
+
+    if not reasons:
+        reasons.append("it was one of the closest available matches in the dataset")
+
+    return {
+        "song": song,
+        "score": round(score, 2),
+        "confidence": confidence,
+        "reliability_label": reliability_label,
+        "explanation": "Recommended because it " + ", ".join(reasons) + ".",
+    }
+
+
+def recommend_songs(profile, csv_path="data/songs.csv", top_k=3):
+    songs = load_songs(csv_path)
+
+    scored_songs = [score_song(song, profile) for song in songs]
+    scored_songs.sort(key=lambda item: item["score"], reverse=True)
+
+    top_results = scored_songs[:top_k]
+
+    weak_results = all(result["confidence"] < 50 for result in top_results)
+
+    return {
+        "recommendations": top_results,
+        "guardrail_message": (
+            "No strong matches found. Showing the closest available songs."
+            if weak_results
+            else None
+        ),
+    }
