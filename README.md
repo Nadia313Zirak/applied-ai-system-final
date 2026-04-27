@@ -155,3 +155,8 @@ One limitation is that the system depends on a small song dataset, so some edge 
 
 if pytest does not work and throw errors please try the below:
 PYTHONPATH=. pytest
+
+//Run the web app:
+
+```bash
+streamlit run app.py
