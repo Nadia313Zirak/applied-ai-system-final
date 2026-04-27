@@ -160,3 +160,8 @@ PYTHONPATH=. pytest
 
 ```bash
 streamlit run app.py
+
+## Video Walkthrough
+
+Watch my project demo here:
+https://www.loom.com/share/1e917afa2fe34f22a5b9fa22c46d9a83
