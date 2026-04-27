@@ -151,3 +151,7 @@ One limitation is that the system depends on a small song dataset, so some edge 
 
 ![System Architecture](assets/system_architecture.png)
 ![Evaluation Output](assets/evaluation_output.png)
+
+
+if pytest does not work and throw errors please try the below:
+PYTHONPATH=. pytest
